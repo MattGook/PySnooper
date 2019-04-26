@@ -4,6 +4,8 @@
 import sys
 import re
 import collections
+import time
+
 try:
     from collections import ChainMap
 except ImportError:
@@ -120,9 +122,34 @@ def get_source_from_frame(frame):
     return source
 
 
+def time_formatter(self, time_format):
+    def iso_formatter():
+        return datetime_module.datetime.now().time().isoformat()
+
+    def time_formatter(grading):
+
+        def func():
+            now_string = _ = time.time()
+            if self._pre_time is not None:
+                now_string = int((now_string - self._pre_time) * grading)
+            else:
+                print('--->', id(self))
+                now_string = 0
+
+            self._pre_time = _
+            return now_string
+        return func
+
+    return {
+        'isoformat': iso_formatter,
+        'time_ms': time_formatter(1000),
+        'time_ns': time_formatter(1000*1000),
+    }[time_format]
+
+
 class Tracer:
     def __init__(self, target_code_object, write, truncate, variables=(),
-                 depth=1, prefix='', overwrite=False):
+                 depth=1, prefix='', overwrite=False, time_format='isoformat'):
         self.target_code_object = target_code_object
         self._write = write
         self.truncate = truncate
@@ -134,13 +161,15 @@ class Tracer:
         self.overwrite = overwrite
         self._did_overwrite = False
         assert self.depth >= 1
+        self.time_formatter = time_formatter(self, time_format)
+        self._pre_time = None
 
     def write(self, s):
         if self.overwrite and not self._did_overwrite:
             self.truncate()
             self._did_overwrite = True
-        s = '{self.prefix}{s}\n'.format(**locals())
-        if isinstance(s, bytes): # Python 2 compatibility
+        s = f'{self.prefix}{s}\n'
+        if isinstance(s, bytes):  # Python 2 compatibility
             s = s.decode()
         self._write(s)
 
@@ -183,10 +212,8 @@ class Tracer:
 
         ### Reporting newish and modified variables: ##########################
         #                                                                     #
-        self.frame_to_old_local_reprs[frame] = old_local_reprs = \
-                                               self.frame_to_local_reprs[frame]
-        self.frame_to_local_reprs[frame] = local_reprs = \
-                               get_local_reprs(frame, variables=self.variables)
+        self.frame_to_old_local_reprs[frame] = old_local_reprs = self.frame_to_local_reprs[frame]
+        self.frame_to_local_reprs[frame] = local_reprs = get_local_reprs(frame, variables=self.variables)
 
         modified_local_reprs = {}
         newish_local_reprs = {}
@@ -197,18 +224,15 @@ class Tracer:
             elif old_local_reprs[key] != value:
                 modified_local_reprs[key] = value
 
-        newish_string = ('Starting var:.. ' if event == 'call' else
-                                                            'New var:....... ')
+        newish_string = ('Starting var:.. ' if event == 'call' else 'New var:....... ')
         for name, value_repr in sorted(newish_local_reprs.items()):
-            self.write('{indent}{newish_string}{name} = {value_repr}'.format(
-                                                                   **locals()))
+            self.write(f'{indent}{newish_string}{name} = {value_repr}')
         for name, value_repr in sorted(modified_local_reprs.items()):
-            self.write('{indent}Modified var:.. {name} = {value_repr}'.format(
-                                                                   **locals()))
+            self.write(f'{indent}Modified var:.. {name} = {value_repr}')
         #                                                                     #
         ### Finished newish and modified variables. ###########################
 
-        now_string = datetime_module.datetime.now().time().isoformat()
+        now_string = self.time_formatter()
         line_no = frame.f_lineno
         source_line = get_source_from_frame(frame)[line_no - 1]
 
@@ -234,12 +258,10 @@ class Tracer:
         #                                                                     #
         ### Finished dealing with misplaced function definition. ##############
 
-        self.write('{indent}{now_string} {event:9} '
-                   '{line_no:4} {source_line}'.format(**locals()))
+        self.write(f'{indent}\t{now_string}\t{event:9}\t{line_no:4}\t{source_line}')
 
         if event == 'return':
             return_value_repr = get_shortish_repr(arg)
-            self.write('{indent}Return value:.. {return_value_repr}'.
-                                                            format(**locals()))
+            self.write(f'{indent}Return value:.. {return_value_repr}')
 
         return self.trace

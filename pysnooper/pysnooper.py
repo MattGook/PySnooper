@@ -10,6 +10,9 @@ from . import pycompat
 from .tracer import Tracer
 
 
+ALLOW_TIME_FORMAT = ['isoformat', 'time_ms', 'time_ns']
+
+
 def get_write_and_truncate_functions(output):
     if output is None:
         def write(s):
@@ -32,7 +35,8 @@ def get_write_and_truncate_functions(output):
     return (write, truncate)
 
 
-def snoop(output=None, variables=(), depth=1, prefix='', overwrite=False):
+def snoop(output=None, variables=(), depth=1, prefix='', overwrite=False,
+          time_format='isoformat'):
     '''
     Snoop on the function, writing everything it's doing to stderr.
 
@@ -64,11 +68,17 @@ def snoop(output=None, variables=(), depth=1, prefix='', overwrite=False):
     if truncate is None and overwrite:
         raise Exception("`overwrite=True` can only be used when writing "
                         "content to file.")
+
+    if time_format not in ALLOW_TIME_FORMAT:
+        raise Exception(f'time_format[{time_format}] should be '
+                        f'one of {ALLOW_TIME_FORMAT}')
+
     def decorate(function):
         target_code_object = function.__code__
         tracer = Tracer(target_code_object=target_code_object, write=write,
                         truncate=truncate, variables=variables, depth=depth,
-                        prefix=prefix, overwrite=overwrite)
+                        prefix=prefix, overwrite=overwrite,
+                        time_format=time_format)
 
         def inner(function_, *args, **kwargs):
             with tracer:

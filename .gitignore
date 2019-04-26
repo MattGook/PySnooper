@@ -14,3 +14,6 @@ build/
 
 .coverage
 htmlcov
+.idea/
+Pipfile.lock
+test_main.py
